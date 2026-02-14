@@ -36,7 +36,36 @@ def get_all_bus_stops() -> List[Dict]:
         }
         for row in rows
     ]
+def search_bus_stops(query: str, limit: int = 10) -> List[Dict]:
+    """
+    Searches bus stops by description or code using SQL LIKE.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
 
+    wildcard = f"%{query}%"
+
+    cursor.execute("""
+        SELECT bus_stop_code, description, latitude, longitude
+        FROM bus_stops
+        WHERE description LIKE ?
+           OR bus_stop_code LIKE ?
+        ORDER BY description
+        LIMIT ?
+    """, (wildcard, wildcard, limit))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [
+        {
+            "bus_stop_code": row[0],
+            "description": row[1],
+            "latitude": row[2],
+            "longitude": row[3]
+        }
+        for row in rows
+    ]
 
 def get_bus_stop_by_code(bus_stop_code: str) -> Dict | None:
     """

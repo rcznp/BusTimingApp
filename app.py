@@ -1,7 +1,11 @@
 from fastapi import FastAPI, HTTPException,Query
 from services.bus_service import get_bus_arrival
 from models.schemas import BusArrivalResponse
-from services.bus_stop_repository import get_all_bus_stops
+from services.bus_stop_repository import (
+    get_all_bus_stops,
+    search_bus_stops,
+    get_bus_stop_by_code
+)
 from fastapi.middleware.cors import CORSMiddleware
 
 import math
@@ -96,6 +100,22 @@ def nearby_bus_stops(
             },
             "count": len(results),
             "stops": results
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/bus-stops/search")
+def search_stops(
+    q: str = Query(..., min_length=2),
+    limit: int = 10
+):
+    try:
+        results = search_bus_stops(q, limit)
+
+        return {
+            "query": q,
+            "count": len(results),
+            "results": results
         }
 
     except Exception as e:
