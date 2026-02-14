@@ -4,11 +4,7 @@ from datetime import datetime
 from dateutil import parser
 
 
-def compute_eta_minutes(eta_str: str, now: datetime):
-    if not eta_str:
-        return None
-
-    eta_time = parser.isoparse(eta_str)
+def compute_eta_minutes(eta_time: datetime, now: datetime):
     diff = (eta_time - now).total_seconds() / 60
     minutes = int(diff)
     return max(minutes, 0)
@@ -37,7 +33,6 @@ def get_bus_arrival(bus_stop_code: str):
 
     for service in services:
         service_no = service["ServiceNo"]
-
         arrivals = []
 
         for key in ["NextBus", "NextBus2", "NextBus3"]:
@@ -46,13 +41,14 @@ def get_bus_arrival(bus_stop_code: str):
                 continue
 
             eta_str = bus.get("EstimatedArrival")
-            eta_minutes = compute_eta_minutes(eta_str, now)
-
-            if eta_minutes is None:
+            if not eta_str:
                 continue
 
+            eta_time = parser.isoparse(eta_str)
+            eta_minutes = compute_eta_minutes(eta_time, now)
+
             arrivals.append({
-                "estimated_arrival": eta_str,  # raw timestamp
+                "estimated_arrival": eta_time,   # ← datetime object
                 "eta_minutes": eta_minutes,
                 "status": "Arr" if eta_minutes <= 0 else f"{eta_minutes} min",
                 "load": format_load(bus.get("Load"))
@@ -66,7 +62,7 @@ def get_bus_arrival(bus_stop_code: str):
 
     result = {
         "bus_stop_code": bus_stop_code,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now().astimezone(),  # ← datetime object
         "services": formatted_services
     }
 
