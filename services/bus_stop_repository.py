@@ -1,94 +1,28 @@
-import sqlite3
-from typing import List, Dict
+import requests
 
-DB_NAME = "bus_stops.db"
-
-
-def get_connection():
-    """
-    Creates a new SQLite connection.
-    FastAPI should NOT reuse connections globally for SQLite.
-    """
-    return sqlite3.connect(DB_NAME)
+WORKER_BASE_URL = "https://bus-worker.rczalb.workers.dev"
 
 
-def get_all_bus_stops() -> List[Dict]:
-    """
-    Returns all bus stops from the database.
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
+def get_all_bus_stops():
+    response = requests.get(f"{WORKER_BASE_URL}/bus-stops")
+    response.raise_for_status()
+    return response.json()
 
-    cursor.execute("""
-        SELECT bus_stop_code, description, latitude, longitude
-        FROM bus_stops
-    """)
 
-    rows = cursor.fetchall()
-    conn.close()
+def search_bus_stops(query: str, limit: int = 10):
+    response = requests.get(
+        f"{WORKER_BASE_URL}/bus-stops/search",
+        params={"q": query, "limit": limit}
+    )
+    response.raise_for_status()
+    return response.json()["results"]
 
-    return [
-        {
-            "bus_stop_code": row[0],
-            "description": row[1],
-            "latitude": row[2],
-            "longitude": row[3]
-        }
-        for row in rows
-    ]
-def search_bus_stops(query: str, limit: int = 10) -> List[Dict]:
-    """
-    Searches bus stops by description or code using SQL LIKE.
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
 
-    wildcard = f"%{query}%"
-
-    cursor.execute("""
-        SELECT bus_stop_code, description, latitude, longitude
-        FROM bus_stops
-        WHERE description LIKE ?
-           OR bus_stop_code LIKE ?
-        ORDER BY description
-        LIMIT ?
-    """, (wildcard, wildcard, limit))
-
-    rows = cursor.fetchall()
-    conn.close()
-
-    return [
-        {
-            "bus_stop_code": row[0],
-            "description": row[1],
-            "latitude": row[2],
-            "longitude": row[3]
-        }
-        for row in rows
-    ]
-
-def get_bus_stop_by_code(bus_stop_code: str) -> Dict | None:
-    """
-    Returns a single bus stop by code.
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT bus_stop_code, description, latitude, longitude
-        FROM bus_stops
-        WHERE bus_stop_code = ?
-    """, (bus_stop_code,))
-
-    row = cursor.fetchone()
-    conn.close()
-
-    if row:
-        return {
-            "bus_stop_code": row[0],
-            "description": row[1],
-            "latitude": row[2],
-            "longitude": row[3]
-        }
-
-    return None
+def get_bus_stop_by_code(bus_stop_code: str):
+    response = requests.get(
+        f"{WORKER_BASE_URL}/bus-stops/{bus_stop_code}"
+    )
+    if response.status_code == 404:
+        return None
+    response.raise_for_status()
+    return response.json()

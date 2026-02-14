@@ -1,0 +1,11 @@
+name = "bus-worker"
+account_id = "84486de215567e5430eef8eb3ebb42cf"
+
+main = "src/index.js"
+compatibility_date = "2026-02-12"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bus_stops_db"
+database_id = "6223860c-1a88-4ac5-b805-b5b4566a83c8"

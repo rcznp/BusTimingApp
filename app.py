@@ -1,70 +1,99 @@
-from fastapi import FastAPI, HTTPException,Query
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from services.bus_service import get_bus_arrival
 from models.schemas import BusArrivalResponse
-from services.bus_stop_repository import (
-    get_all_bus_stops,
-    search_bus_stops,
-    get_bus_stop_by_code
-)
-from fastapi.middleware.cors import CORSMiddleware
+import requests
+from dotenv import load_dotenv
+import os
+load_dotenv()
+WORKER_BASE_URL = os.getenv("WORKER_BASE_URL")
 
-import math
-
-def haversine(lat1, lon1, lat2, lon2):
-    R = 6371000
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-
-    a = math.sin(dphi/2)**2 + \
-        math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
-
-    return 2 * R * math.asin(math.sqrt(a))
-
-
-def get_top_nearest_stops(user_lat, user_lng, limit=20):
-    stops = get_all_bus_stops()
-    enriched = []
-
-    for stop in stops:
-        distance = haversine(
-            user_lat,
-            user_lng,
-            stop["latitude"],
-            stop["longitude"]
-        )
-
-        stop["distance_m"] = round(distance)
-        enriched.append(stop)
-
-    enriched.sort(key=lambda x: x["distance_m"])
-    return enriched[:limit]
 app = FastAPI(
     title="Bus Arrival API",
     version="1.0.0"
 )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # later restrict to FE domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# -----------------------
+# Health
+# -----------------------
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
 
+# -----------------------
+# Bus Arrival
+# -----------------------
+
 @app.get("/bus-arrival", response_model=BusArrivalResponse)
 def bus_arrival(busStopCode: str):
-
     try:
         return get_bus_arrival(busStopCode)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -----------------------
+# Search Bus Stops (via Worker)
+# -----------------------
+
+@app.get("/bus-stops/search")
+def search_stops(
+    q: str = Query(..., min_length=1),
+    limit: int = 10
+):
+    try:
+        response = requests.get(
+            f"{WORKER_BASE_URL}/bus-stops/search",
+            params={"q": q, "limit": limit}
+        )
+        response.raise_for_status()
+
+        results = response.json()
+
+        return {
+            "query": q,
+            "count": len(results),
+            "results": results
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# -----------------------
+# Get Bus Stop By Code (via Worker)
+# -----------------------
+
+@app.get("/bus-stops/{bus_stop_code}")
+def get_bus_stop(bus_stop_code: str):
+    try:
+        response = requests.get(
+            f"{WORKER_BASE_URL}/bus-stops/{bus_stop_code}"
+        )
+
+        if response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Bus stop not found")
+
+        response.raise_for_status()
+        return response.json()
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -----------------------
+# Nearby Bus Stops (via Worker)
+# -----------------------
 
 @app.get("/nearby-bus-stops")
 def nearby_bus_stops(
@@ -73,11 +102,21 @@ def nearby_bus_stops(
     limit: int = 20
 ):
     try:
-        nearest = get_top_nearest_stops(lat, lng, limit)
+        response = requests.get(
+            f"{WORKER_BASE_URL}/bus-stops/nearby",
+            params={
+                "lat": lat,
+                "lng": lng,
+                "limit": limit
+            }
+        )
+        response.raise_for_status()
+
+        stops = response.json()
 
         results = []
 
-        for stop in nearest:
+        for stop in stops:
             try:
                 arrival_data = get_bus_arrival(stop["bus_stop_code"])
                 services = arrival_data.get("services", [])
@@ -100,22 +139,6 @@ def nearby_bus_stops(
             },
             "count": len(results),
             "stops": results
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-@app.get("/bus-stops/search")
-def search_stops(
-    q: str = Query(..., min_length=2),
-    limit: int = 10
-):
-    try:
-        results = search_bus_stops(q, limit)
-
-        return {
-            "query": q,
-            "count": len(results),
-            "results": results
         }
 
     except Exception as e:
